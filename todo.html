@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Momentum</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.5/dist/umd/supabase.js"
+        integrity="sha256-o8PTPMwoGHo4gNsOfYxre/n7VC/TEMaxUs3Gj07WO20="
+        crossorigin="anonymous"></script>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 480px; margin: 24px auto; padding: 0 14px; background: #111; color: #eee; color-scheme: dark; }
   h1 { font-size: 1.3rem; }
@@ -195,16 +198,45 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
 const dateStr = (d) => d.toISOString().slice(0, 10);
 
-const load = () => JSON.parse(localStorage.getItem('todos') || '[]');
-const save = (todos) => localStorage.setItem('todos', JSON.stringify(todos));
+// ---- Supabase config: your friend fills these in from Project Settings > API ----
+const SUPABASE_URL = 'https://uyqrdxhgduidaedmgjpd.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV5cXJkeGhnZHVpZGFlZG1nanBkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwMzMyNjYsImV4cCI6MjA5OTYwOTI2Nn0.K7uLgAcbgMAE_xacSRnUGQjMjcNKOk1ew5Lrsmye2RA';
+const sb = SUPABASE_URL.startsWith('YOUR_') ? null : supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// migrate old month-based tasks to a concrete date (first of that month)
-(function migrate() {
-  const all = load();
+// in-memory cache; load()/save() below are what the rest of the app calls
+let cache = [];
+const load = () => cache;
+
+const toDb = (t) => ({ id: t.id, text: t.text, done: t.done, date: t.date, difficulty: t.difficulty, completed_at: t.completedAt });
+const fromDb = (r) => ({ id: r.id, text: r.text, done: r.done, date: r.date, difficulty: r.difficulty, completedAt: r.completed_at });
+
+function save(todos) {
+  cache = todos;
+  if (sb) {
+    // ponytail: delete-all + insert-all is O(n) per save, fine at personal-todo scale.
+    // Upgrade to incremental upsert/delete if task count grows into the thousands.
+    sb.from('tasks').delete().neq('id', 0)
+      .then(() => sb.from('tasks').insert(todos.map(toDb)))
+      .then(({ error }) => { if (error) console.error('Supabase save failed:', error.message); });
+  } else {
+    localStorage.setItem('todos', JSON.stringify(todos));
+  }
+}
+
+async function loadInitialData() {
+  if (sb) {
+    const { data, error } = await sb.from('tasks').select('*').order('id');
+    if (error) { console.error('Supabase load failed:', error.message); cache = []; }
+    else cache = data.map(fromDb);
+  } else {
+    cache = JSON.parse(localStorage.getItem('todos') || '[]');
+  }
+
+  // migrate old month-based tasks to a concrete date (first of that month)
   let changed = false;
-  all.forEach(t => { if (!t.date) { t.date = t.month ? t.month + '-01' : todayStr(); changed = true; } });
-  if (changed) save(all);
-})();
+  cache.forEach(t => { if (!t.date) { t.date = t.month ? t.month + '-01' : todayStr(); changed = true; } });
+  if (changed) save(cache);
+}
 
 datePicker.value = todayStr();
 
@@ -481,7 +513,7 @@ document.getElementById('todayBtn').onclick = () => {
 
 datePicker.onchange = () => { selectedDay = null; render(); };
 sortPicker.onchange = render;
-render();
+loadInitialData().then(render);
 </script>
 </body>
 </html>
