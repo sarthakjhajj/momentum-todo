@@ -18,8 +18,18 @@
   li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #333; }
   li span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   li.done span { text-decoration: line-through; opacity: 0.5; }
-  li button { background: none; border: none; color: #ccc; font-size: 0.95rem; padding: 4px 3px; flex-shrink: 0; }
   li .badge, li .row-date { flex: 0 0 auto; }
+  /* the row body is the tap target — opens the action sheet */
+  li .row-body { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; padding: 4px 0; }
+  li .row-body:active { opacity: 0.6; }
+
+  #taskDlg h3 { margin: 0 0 2px; font-size: 1rem; overflow-wrap: anywhere; }
+  #taskDlg p { margin: 0 0 14px; color: #888; font-size: 0.78rem; }
+  .sheet { display: flex; flex-direction: column; gap: 6px; }
+  .sheet button { text-align: left; background: #1c1c1c; color: #eee; border: 1px solid #333;
+                  border-radius: 6px; padding: 12px 14px; font-size: 0.9rem; }
+  .sheet button.danger { color: #ff7b72; border-color: #4a1414; }
+  .sheet-close { width: 100%; margin-top: 10px; background: none; border: none; color: #888; padding: 10px; }
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
   .progress { background: #333; border-radius: 4px; height: 8px; margin-bottom: 16px; overflow: hidden; }
   .progress-fill { background: #4caf50; height: 100%; width: 0%; transition: width 0.2s; }
@@ -171,6 +181,18 @@
 </div>
 
 <div id="toast"><span id="toastMsg"></span><button type="button" id="undoBtn">Undo</button></div>
+
+<dialog id="taskDlg">
+  <h3 id="taskDlgName"></h3>
+  <p id="taskDlgMeta"></p>
+  <div class="sheet">
+    <button type="button" id="actEdit">✎ Rename</button>
+    <button type="button" id="actRepeat">⟳ Repeat…</button>
+    <button type="button" id="actPostpone">→ Move to next day</button>
+    <button type="button" id="actDelete" class="danger">✕ Delete</button>
+  </div>
+  <button type="button" id="actClose" class="sheet-close">Close</button>
+</dialog>
 
 <dialog id="repeatDlg">
   <form method="dialog">
@@ -396,49 +418,15 @@ function render() {
       }
       dateChip.title = t.date;
     }
-    span.ondblclick = () => {
-      const next = prompt('Edit task', t.text);
-      if (next !== null && next.trim()) {
-        const all = load();
-        all.find(x => x.id === t.id).text = next.trim();
-        save(all);
-        render();
-      }
-    };
+    // checkbox stays inline (done constantly, must be one tap); everything else
+    // lives in the action sheet so the row can't get crowded
+    const body = document.createElement('div');
+    body.className = 'row-body';
+    body.append(badge, span);
+    if (showChip) body.append(dateChip);
+    body.onclick = () => openTaskSheet(t, isOverdueRow);
 
-    const editBtn = document.createElement('button');
-    editBtn.textContent = '✎';
-    editBtn.onclick = span.ondblclick;
-
-    const postponeBtn = document.createElement('button');
-    postponeBtn.textContent = '→';
-    postponeBtn.title = isOverdueRow ? 'Move to today' : 'Move to next day';
-    postponeBtn.onclick = () => {
-      const all = load();
-      const item = all.find(x => x.id === t.id);
-      const next = dateStr(addDays(item.date, 1));
-      // nudging an overdue task by one day would just leave it late; pull it to today
-      item.date = next < today ? today : next;
-      save(all);
-      render();
-    };
-
-    const repeatBtn = document.createElement('button');
-    repeatBtn.textContent = '⟳';
-    repeatBtn.title = 'Repeat this task';
-    repeatBtn.onclick = () => openRepeat(t);
-
-    const delBtn = document.createElement('button');
-    delBtn.textContent = '✕';
-    delBtn.onclick = () => {
-      showUndo(t);
-      save(load().filter(x => x.id !== t.id));
-      render();
-    };
-
-    li.append(checkbox, badge, span);
-    if (showChip) li.append(dateChip);
-    li.append(editBtn, repeatBtn, postponeBtn, delBtn);
+    li.append(checkbox, body);
     list.appendChild(li);
   });
   renderDashboard();
@@ -552,6 +540,63 @@ addForm.onsubmit = (e) => {
   taskInput.value = '';
   selectedDay = null; // return to the date view so the new task shows
   render();
+};
+
+// task action sheet — opened by tapping a row
+const taskDlg = document.getElementById('taskDlg');
+let sheetTask = null;
+
+function openTaskSheet(t, isOverdueRow) {
+  sheetTask = t;
+  document.getElementById('taskDlgName').textContent = t.text;
+  document.getElementById('taskDlgMeta').textContent =
+    `${t.difficulty || 'medium'} · ${t.date}${t.done ? ' · done' : ''}`;
+  document.getElementById('actPostpone').textContent =
+    isOverdueRow ? '→ Move to today' : '→ Move to next day';
+  taskDlg.showModal();
+}
+
+document.getElementById('actClose').onclick = () => { sheetTask = null; taskDlg.close(); };
+
+document.getElementById('actEdit').onclick = () => {
+  taskDlg.close();
+  const t = sheetTask; sheetTask = null;
+  if (!t) return;
+  const next = prompt('Rename task', t.text);
+  if (next !== null && next.trim()) {
+    const all = load();
+    all.find(x => x.id === t.id).text = next.trim();
+    save(all);
+    render();
+  }
+};
+
+document.getElementById('actPostpone').onclick = () => {
+  taskDlg.close();
+  const t = sheetTask; sheetTask = null;
+  if (!t) return;
+  const all = load();
+  const item = all.find(x => x.id === t.id);
+  const next = dateStr(addDays(item.date, 1));
+  // nudging an overdue task by one day would just leave it late; pull it to today
+  item.date = next < todayStr() ? todayStr() : next;
+  save(all);
+  render();
+};
+
+document.getElementById('actDelete').onclick = () => {
+  taskDlg.close();
+  const t = sheetTask; sheetTask = null;
+  if (!t) return;
+  showUndo(t);
+  save(load().filter(x => x.id !== t.id));
+  render();
+};
+
+document.getElementById('actRepeat').onclick = () => {
+  taskDlg.close();
+  const t = sheetTask; sheetTask = null;
+  if (t) openRepeat(t);
 };
 
 // repeat: clone a task forward from its own date until an end date
