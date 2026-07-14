@@ -210,14 +210,25 @@ const load = () => cache;
 const toDb = (t) => ({ id: t.id, text: t.text, done: t.done, date: t.date, difficulty: t.difficulty, completed_at: t.completedAt });
 const fromDb = (r) => ({ id: r.id, text: r.text, done: r.done, date: r.date, difficulty: r.difficulty, completedAt: r.completed_at });
 
+// all writes go through this queue so overlapping save() calls can't race
+// and clobber each other's rows (delete-all+insert-all previously did exactly that)
+let syncQueue = Promise.resolve();
+
 function save(todos) {
   cache = todos;
   if (sb) {
-    // ponytail: delete-all + insert-all is O(n) per save, fine at personal-todo scale.
-    // Upgrade to incremental upsert/delete if task count grows into the thousands.
-    sb.from('tasks').delete().neq('id', 0)
-      .then(() => sb.from('tasks').insert(todos.map(toDb)))
-      .then(({ error }) => { if (error) console.error('Supabase save failed:', error.message); });
+    syncQueue = syncQueue.then(async () => {
+      if (todos.length) {
+        const { error } = await sb.from('tasks').upsert(todos.map(toDb));
+        if (error) { console.error('Supabase save failed:', error.message); return; }
+        const ids = todos.map(t => t.id).join(',');
+        const { error: delErr } = await sb.from('tasks').delete().not('id', 'in', `(${ids})`);
+        if (delErr) console.error('Supabase cleanup failed:', delErr.message);
+      } else {
+        const { error } = await sb.from('tasks').delete().neq('id', 0);
+        if (error) console.error('Supabase save failed:', error.message);
+      }
+    });
   } else {
     localStorage.setItem('todos', JSON.stringify(todos));
   }
