@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Momentum</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 24px auto; padding: 0 14px; background: #111; color: #eee; color-scheme: dark; }
+  h1 { font-size: 1.3rem; }
+  input[type=month] { margin-bottom: 12px; }
+  form { display: flex; gap: 6px; margin-bottom: 16px; }
+  input[type=text] { flex: 1; padding: 6px; }
+  button { padding: 6px 10px; cursor: pointer; }
+  ul { list-style: none; padding: 0; }
+  li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #333; }
+  li span { flex: 1; }
+  li.done span { text-decoration: line-through; opacity: 0.5; }
+  li button { background: none; border: none; color: #ccc; font-size: 1rem; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .progress { background: #333; border-radius: 4px; height: 8px; margin-bottom: 16px; overflow: hidden; }
+  .progress-fill { background: #4caf50; height: 100%; width: 0%; transition: width 0.2s; }
+  .progress-label { font-size: 0.8rem; color: #999; margin-bottom: 8px; }
+  select, input[type=text] { background: #1c1c1c; color: #eee; border: 1px solid #333; border-radius: 4px; }
+  .badge { font-size: 0.65rem; padding: 1px 6px; border-radius: 3px; text-transform: uppercase; }
+  .badge-easy { background: #1e4620; color: #7ee787; }
+  .badge-medium { background: #4a3b0f; color: #f0c93a; }
+  .badge-hard { background: #4a1414; color: #ff7b72; }
+
+  h2 { font-size: 0.95rem; color: #ccc; margin: 26px 0 10px; font-weight: 600; }
+  .dashboard { margin-top: 30px; border-top: 1px solid #2a2a2a; padding-top: 6px; }
+
+  /* lighter stats — no boxes */
+  .stat-row { display: flex; gap: 20px; margin-bottom: 22px; flex-wrap: wrap; }
+  .stat-box { flex: 1; min-width: 70px; }
+  .stat-box .num { font-size: 1.5rem; font-weight: 700; line-height: 1.1; }
+  .stat-box .lbl { font-size: 0.72rem; color: #888; }
+
+  .cal-summary { font-size: 0.82rem; color: #999; margin-bottom: 10px; }
+  .cal { display: flex; gap: 6px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  .cal-days { display: grid; grid-template-rows: repeat(7, 15px); gap: 3px; font-size: 0.6rem; color: #888; padding-top: 18px; flex-shrink: 0; }
+  .cal-days span { line-height: 15px; }
+  .cal-main { display: flex; flex-direction: column; }
+  .cal-months { display: grid; grid-auto-flow: column; grid-auto-columns: 15px; gap: 3px; font-size: 0.62rem; color: #888; height: 15px; margin-bottom: 3px; }
+  .cal-months span { grid-row: 1; white-space: nowrap; overflow: visible; }
+  .heatmap { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 15px); gap: 3px; }
+  .heatmap .cell { width: 15px; height: 15px; border-radius: 3px; background: #1a1a1a; cursor: pointer; }
+  .cell[data-level="1"] { background: #0e4429; }
+  .cell[data-level="2"] { background: #006d32; }
+  .cell[data-level="3"] { background: #26a641; }
+  .cell[data-level="4"] { background: #39d353; }
+  .heatmap .cell.today { outline: 1px solid #eee; outline-offset: 1px; }
+  .heatmap .cell.selected { outline: 2px solid #58a6ff; outline-offset: 1px; }
+  .heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 4px; font-size: 0.7rem; color: #999; margin-top: 8px; }
+  .heat-legend .cell { width: 13px; height: 13px; border-radius: 3px; }
+  .day-filter { font-size: 0.8rem; color: #58a6ff; margin: 8px 0; display: none; }
+  .day-filter button { color: #58a6ff; font-size: 0.8rem; padding: 0 4px; }
+
+  /* Today card */
+  .today-card { background: #161616; border: 1px solid #2a2a2a; border-radius: 8px; padding: 14px; margin-bottom: 8px; }
+  .today-card .t-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .today-card .t-head b { font-size: 0.95rem; }
+  .today-card .t-streak { font-size: 0.8rem; color: #f0c93a; }
+
+  /* difficulty as labeled bars */
+  .diff-row { display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.78rem; }
+  .diff-track { background: #222; border-radius: 4px; height: 10px; overflow: hidden; }
+  .diff-track div { height: 100%; }
+
+  dialog { background: #181818; color: #eee; border: 1px solid #333; border-radius: 8px; padding: 18px; min-width: 250px; }
+  dialog::backdrop { background: rgba(0,0,0,0.6); }
+  dialog h3 { margin: 0 0 4px; font-size: 1rem; }
+  dialog p { margin: 0 0 14px; color: #888; font-size: 0.8rem; }
+  dialog label { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 0.85rem; }
+  dialog select, dialog input { padding: 5px; }
+  dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 16px 0 0; }
+  .day-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+  .day-actions button { background: #1c1c1c; color: #ccc; border: 1px solid #333; border-radius: 4px; font-size: 0.75rem; }
+  #todayBtn.off-today { background: #1f6feb; border-color: #1f6feb; color: #fff; font-weight: 600; }
+  #todayBtn:disabled { opacity: 0.4; cursor: default; }
+  .empty { color: #888; font-size: 0.85rem; padding: 12px 0; }
+  .empty b { color: #ccc; display: block; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<h1>Momentum</h1>
+
+<!-- Dashboard first: how am I doing? -->
+<div class="stat-row">
+  <div class="stat-box"><div class="num" id="statCurrentStreak">0</div><div class="lbl">Current streak</div></div>
+  <div class="stat-box"><div class="num" id="statLongestStreak">0</div><div class="lbl">Longest streak</div></div>
+  <div class="stat-box"><div class="num" id="statTotalDone">0</div><div class="lbl">Total done</div></div>
+  <div class="stat-box"><div class="num" id="statRate">0%</div><div class="lbl">Completion rate</div></div>
+</div>
+
+<!-- Lifetime history -->
+<h2 style="margin-top:20px">Contribution calendar</h2>
+<div class="cal-summary" id="calSummary"></div>
+<div class="cal">
+  <div class="cal-days"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span></div>
+  <div class="cal-main">
+    <div class="cal-months" id="calMonths"></div>
+    <div class="heatmap" id="heatmap"></div>
+  </div>
+</div>
+<div class="heat-legend">
+  Less
+  <span class="cell"></span>
+  <span class="cell" data-level="1"></span>
+  <span class="cell" data-level="2"></span>
+  <span class="cell" data-level="3"></span>
+  <span class="cell" data-level="4"></span>
+  More
+</div>
+<div class="day-filter" id="dayFilter"></div>
+
+<h2>Difficulty breakdown</h2>
+<div id="diffRows"></div>
+
+<!-- Today's progress -->
+<div class="dashboard">
+  <div class="today-card">
+    <div class="t-head"><b id="todayLabel">Today</b><span class="t-streak" id="todayStreak"></span></div>
+    <div id="todayCount" style="font-size:0.78rem;color:#888">0 completed today</div>
+  </div>
+
+  <!-- Tasks for the selected day -->
+  <h2>Tasks</h2>
+  <div class="toolbar">
+    <input type="date" id="datePicker">
+    <select id="sortPicker">
+      <option value="newest">Newest first</option>
+      <option value="oldest">Oldest first</option>
+      <option value="az">A-Z</option>
+      <option value="done-last">Done last</option>
+    </select>
+  </div>
+  <div class="day-actions">
+    <button type="button" id="todayBtn">Today</button>
+    <button type="button" id="carryBtn">Carry unfinished → next day</button>
+  </div>
+  <div class="progress-label" id="progressLabel"></div>
+  <div class="progress"><div class="progress-fill" id="progressFill"></div></div>
+  <form id="addForm">
+    <input type="text" id="taskInput" placeholder="New task..." required>
+    <select id="difficultyInput">
+      <option value="easy">Easy</option>
+      <option value="medium" selected>Medium</option>
+      <option value="hard">Hard</option>
+    </select>
+    <button type="submit">Add</button>
+  </form>
+  <ul id="list"></ul>
+</div>
+
+<dialog id="repeatDlg">
+  <form method="dialog">
+    <h3>Repeat task</h3>
+    <p id="repeatName"></p>
+    <label>Repeat
+      <select id="repeatFreq">
+        <option value="daily">Every day</option>
+        <option value="weekdays">Weekdays (Mon–Fri)</option>
+        <option value="weekly">Every week</option>
+      </select>
+    </label>
+    <label>Until
+      <input type="date" id="repeatUntil">
+    </label>
+    <menu>
+      <button type="button" id="repeatCancel">Cancel</button>
+      <button type="button" id="repeatOk">Add repeats</button>
+    </menu>
+  </form>
+</dialog>
+
+<script>
+const datePicker = document.getElementById('datePicker');
+const sortPicker = document.getElementById('sortPicker');
+const list = document.getElementById('list');
+const addForm = document.getElementById('addForm');
+const taskInput = document.getElementById('taskInput');
+const progressFill = document.getElementById('progressFill');
+const progressLabel = document.getElementById('progressLabel');
+const difficultyInput = document.getElementById('difficultyInput');
+const heatmapEl = document.getElementById('heatmap');
+const calMonthsEl = document.getElementById('calMonths');
+const calSummaryEl = document.getElementById('calSummary');
+const diffRowsEl = document.getElementById('diffRows');
+const dayFilterEl = document.getElementById('dayFilter');
+let selectedDay = null;
+
+const DIFF_COLORS = { easy: '#7ee787', medium: '#f0c93a', hard: '#ff7b72' };
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+const dateStr = (d) => d.toISOString().slice(0, 10);
+
+const load = () => JSON.parse(localStorage.getItem('todos') || '[]');
+const save = (todos) => localStorage.setItem('todos', JSON.stringify(todos));
+
+// migrate old month-based tasks to a concrete date (first of that month)
+(function migrate() {
+  const all = load();
+  let changed = false;
+  all.forEach(t => { if (!t.date) { t.date = t.month ? t.month + '-01' : todayStr(); changed = true; } });
+  if (changed) save(all);
+})();
+
+datePicker.value = todayStr();
+
+function sortTodos(todos) {
+  const sorted = [...todos];
+  switch (sortPicker.value) {
+    case 'oldest': return sorted.sort((a, b) => a.id - b.id);
+    case 'az': return sorted.sort((a, b) => a.text.localeCompare(b.text));
+    case 'done-last': return sorted.sort((a, b) => a.done - b.done);
+    default: return sorted.sort((a, b) => b.id - a.id);
+  }
+}
+
+function render() {
+  const base = selectedDay
+    ? load().filter(t => t.completedAt === selectedDay)
+    : load().filter(t => t.date === datePicker.value);
+  const todos = sortTodos(base);
+
+  if (selectedDay) {
+    dayFilterEl.style.display = 'block';
+    dayFilterEl.innerHTML = `Showing tasks completed ${selectedDay} <button id="clearDay">clear ✕</button>`;
+    document.getElementById('clearDay').onclick = () => { selectedDay = null; render(); };
+  } else {
+    dayFilterEl.style.display = 'none';
+  }
+
+  // Today button: highlighted when viewing any other day, dimmed when already on today
+  const onToday = !selectedDay && datePicker.value === todayStr();
+  const todayBtn = document.getElementById('todayBtn');
+  todayBtn.disabled = onToday;
+  todayBtn.classList.toggle('off-today', !onToday);
+  todayBtn.textContent = onToday ? 'Today' : '← Back to today';
+
+  const doneCount = todos.filter(t => t.done).length;
+  const pct = todos.length ? Math.round((doneCount / todos.length) * 100) : 0;
+  progressFill.style.width = pct + '%';
+  progressLabel.textContent = todos.length ? `${doneCount}/${todos.length} done (${pct}%)` : 'No tasks yet';
+  list.innerHTML = '';
+  if (!todos.length) {
+    list.innerHTML = selectedDay
+      ? `<li class="empty">No tasks completed on ${selectedDay}.</li>`
+      : `<li class="empty"><b>No tasks yet.</b>Add one below to start building your contribution history.</li>`;
+  }
+  todos.forEach(t => {
+    const li = document.createElement('li');
+    if (t.done) li.classList.add('done');
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = t.done;
+    checkbox.onchange = () => {
+      const all = load();
+      const item = all.find(x => x.id === t.id);
+      item.done = checkbox.checked;
+      item.completedAt = checkbox.checked ? todayStr() : null;
+      save(all);
+      render();
+    };
+
+    const badge = document.createElement('span');
+    badge.className = 'badge badge-' + (t.difficulty || 'medium');
+    badge.textContent = t.difficulty || 'medium';
+
+    const span = document.createElement('span');
+    span.textContent = t.text;
+    span.ondblclick = () => {
+      const next = prompt('Edit task', t.text);
+      if (next !== null && next.trim()) {
+        const all = load();
+        all.find(x => x.id === t.id).text = next.trim();
+        save(all);
+        render();
+      }
+    };
+
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✎';
+    editBtn.onclick = span.ondblclick;
+
+    const postponeBtn = document.createElement('button');
+    postponeBtn.textContent = '→';
+    postponeBtn.title = 'Move to next day';
+    postponeBtn.onclick = () => {
+      const all = load();
+      const item = all.find(x => x.id === t.id);
+      item.date = dateStr(addDays(item.date, 1));
+      save(all);
+      render();
+    };
+
+    const repeatBtn = document.createElement('button');
+    repeatBtn.textContent = '⟳';
+    repeatBtn.title = 'Repeat this task';
+    repeatBtn.onclick = () => openRepeat(t);
+
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '✕';
+    delBtn.onclick = () => {
+      save(load().filter(x => x.id !== t.id));
+      render();
+    };
+
+    li.append(checkbox, badge, span, editBtn, repeatBtn, postponeBtn, delBtn);
+    list.appendChild(li);
+  });
+  renderDashboard();
+}
+
+function renderDashboard() {
+  const all = load();
+  const today = todayStr();
+
+  const counts = {};
+  const dayDiff = {}; // date -> {easy,medium,hard}
+  all.forEach(t => {
+    if (!t.completedAt) return;
+    counts[t.completedAt] = (counts[t.completedAt] || 0) + 1;
+    (dayDiff[t.completedAt] = dayDiff[t.completedAt] || { easy: 0, medium: 0, hard: 0 })[t.difficulty || 'medium']++;
+  });
+
+  // calendar window: full year, snapped to whole weeks (Sunday start)
+  let start = addDays(new Date(), -364);
+  start = addDays(start, -start.getDay());          // back to Sunday
+  let end = new Date();
+  end = addDays(end, 6 - end.getDay());             // forward to Saturday
+  const totalDays = Math.round((end - start) / 86400000) + 1;
+  const numWeeks = totalDays / 7;
+
+  heatmapEl.innerHTML = '';
+  calMonthsEl.innerHTML = '';
+  let lastMonth = -1;
+  for (let w = 0; w < numWeeks; w++) {
+    const weekStart = addDays(start, w * 7);
+    const lbl = document.createElement('span');
+    if (weekStart.getMonth() !== lastMonth) { lbl.textContent = MONTHS[weekStart.getMonth()]; lastMonth = weekStart.getMonth(); }
+    calMonthsEl.appendChild(lbl);
+  }
+
+  for (let i = 0; i < totalDays; i++) {
+    const dObj = addDays(start, i);
+    const d = dateStr(dObj);
+    const future = d > today;
+    const c = counts[d] || 0;
+    const level = c === 0 ? 0 : c === 1 ? 1 : c === 2 ? 2 : c <= 4 ? 3 : 4;
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.dataset.level = level;
+    if (d === today) cell.classList.add('today');
+    if (d === selectedDay) cell.classList.add('selected');
+    if (future) { cell.style.visibility = 'hidden'; }
+    else {
+      const b = dayDiff[d];
+      cell.title = c === 0 ? `${d}: no tasks completed`
+        : `${d}: ${c} completed (E${b.easy} M${b.medium} H${b.hard})`;
+      cell.onclick = () => { selectedDay = (selectedDay === d ? null : d); render(); };
+    }
+    heatmapEl.appendChild(cell);
+  }
+
+  // yearly summary
+  const oneYearAgo = dateStr(addDays(new Date(), -364));
+  const yearCount = Object.entries(counts).filter(([d]) => d >= oneYearAgo).reduce((s, [, n]) => s + n, 0);
+  calSummaryEl.textContent = yearCount
+    ? `You completed ${yearCount} task${yearCount === 1 ? '' : 's'} in the last year.`
+    : 'Complete your first task to start building your history.';
+
+  // streaks
+  const activeDays = new Set(Object.keys(counts));
+  let current = 0;
+  let cursor = activeDays.has(today) ? new Date() : addDays(new Date(), -1);
+  while (activeDays.has(dateStr(cursor))) { current++; cursor = addDays(cursor, -1); }
+  let longest = 0, run = 0;
+  for (let i = 0; i < totalDays; i++) {
+    if (activeDays.has(dateStr(addDays(start, i)))) { run++; longest = Math.max(longest, run); } else { run = 0; }
+  }
+
+  document.getElementById('statCurrentStreak').textContent = current;
+  document.getElementById('statLongestStreak').textContent = longest;
+  document.getElementById('statTotalDone').textContent = all.filter(t => t.done).length;
+  document.getElementById('statRate').textContent = all.length ? Math.round(all.filter(t => t.done).length / all.length * 100) + '%' : '0%';
+
+  // Today card
+  const now = new Date();
+  document.getElementById('todayLabel').textContent = `Today · ${MONTHS[now.getMonth()]} ${now.getDate()}`;
+  document.getElementById('todayStreak').textContent = current ? `🔥 ${current} day streak` : 'No streak yet';
+  const todayN = counts[today] || 0;
+  document.getElementById('todayCount').textContent = `${todayN} completed today`;
+
+  // difficulty breakdown as labeled bars
+  const done = all.filter(t => t.done);
+  const byDiff = { easy: 0, medium: 0, hard: 0 };
+  done.forEach(t => { byDiff[t.difficulty || 'medium']++; });
+  const max = Math.max(1, byDiff.easy, byDiff.medium, byDiff.hard);
+  diffRowsEl.innerHTML = '';
+  ['easy', 'medium', 'hard'].forEach(k => {
+    const row = document.createElement('div');
+    row.className = 'diff-row';
+    row.innerHTML = `<span style="text-transform:capitalize">${k}</span>`
+      + `<span class="diff-track"><div style="width:${byDiff[k] / max * 100}%;background:${DIFF_COLORS[k]}"></div></span>`
+      + `<span style="color:#888">${byDiff[k]}</span>`;
+    diffRowsEl.appendChild(row);
+  });
+}
+
+addForm.onsubmit = (e) => {
+  e.preventDefault();
+  const todos = load();
+  todos.push({ id: Date.now(), text: taskInput.value.trim(), done: false, date: datePicker.value, difficulty: difficultyInput.value, completedAt: null });
+  save(todos);
+  taskInput.value = '';
+  selectedDay = null; // return to the date view so the new task shows
+  render();
+};
+
+// repeat: clone a task forward from its own date until an end date
+const repeatDlg = document.getElementById('repeatDlg');
+const repeatFreq = document.getElementById('repeatFreq');
+const repeatUntil = document.getElementById('repeatUntil');
+let repeatTargetId = null;
+
+function openRepeat(t) {
+  repeatTargetId = t.id;
+  document.getElementById('repeatName').textContent = `"${t.text}" — starting ${t.date}`;
+  repeatUntil.min = dateStr(addDays(t.date, 1));
+  repeatUntil.value = dateStr(addDays(t.date, 7));
+  repeatDlg.showModal();
+}
+
+document.getElementById('repeatCancel').onclick = () => { repeatTargetId = null; repeatDlg.close(); };
+
+document.getElementById('repeatOk').onclick = () => {
+  repeatDlg.close();
+  if (repeatTargetId === null) return;
+  const all = load();
+  const src = all.find(x => x.id === repeatTargetId);
+  repeatTargetId = null;
+  if (!src) return;
+
+  const until = repeatUntil.value;
+  const step = repeatFreq.value === 'weekly' ? 7 : 1;
+  const existing = new Set(all.filter(x => x.text === src.text).map(x => x.date));
+  let id = Date.now();
+
+  for (let d = addDays(src.date, step); dateStr(d) <= until; d = addDays(d, step)) {
+    const ds = dateStr(d);
+    const dow = d.getUTCDay(); // date-only strings parse as UTC
+    if (repeatFreq.value === 'weekdays' && (dow === 0 || dow === 6)) continue;
+    if (existing.has(ds)) continue;
+    all.push({ id: id++, text: src.text, done: false, date: ds, difficulty: src.difficulty, completedAt: null });
+  }
+  save(all);
+  render();
+};
+
+// carry all unfinished tasks from the selected day to the next day
+document.getElementById('carryBtn').onclick = () => {
+  const day = datePicker.value;
+  const next = dateStr(addDays(day, 1));
+  const all = load();
+  let moved = 0;
+  all.forEach(t => { if (t.date === day && !t.done) { t.date = next; moved++; } });
+  if (!moved) return;
+  save(all);
+  datePicker.value = next; // follow the tasks to tomorrow
+  render();
+};
+
+document.getElementById('todayBtn').onclick = () => {
+  datePicker.value = todayStr();
+  selectedDay = null;
+  render();
+};
+
+datePicker.onchange = () => { selectedDay = null; render(); };
+sortPicker.onchange = render;
+render();
+</script>
+</body>
+</html>
